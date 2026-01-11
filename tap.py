@@ -4,6 +4,7 @@ import time
 
 def main(w):
     w.clear()
+    curses.curs_set(0)
     times = [0 for i in range(512)]
     intervals = [2, 4, 8, 12, 16, 32, 42, 69, 100, 128, 192, 256, 420, 512]
     key = 'key'
