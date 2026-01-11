@@ -4,19 +4,19 @@ import time
 
 def main(w):
     w.clear()
-    times = [0 for i in range(100)]
-    intervals = [2, 4, 8, 12, 16, 32, 48, 64, 100]
+    times = [0 for i in range(512)]
+    intervals = [2, 4, 8, 12, 16, 32, 42, 69, 100, 128, 192, 256, 420, 512]
     key = 'key'
-    w.addstr(0, 0, "tap any key (or q to quit)")
+    w.addstr(2, 2, "tap any key (or q to quit)")
     while key not in "q":
         key = w.getkey()
         curses.flash()
         w.clear()
         times = update_times(times)
-        w.addstr(0, 0, "average of the last...")
+        w.addstr(2, 2, "average of the last...")
         for i in range(len(intervals)):
             if bpm(delta(times, intervals[i])):
-                w.addstr(i + 2, 0, f"{intervals[i]:>3} taps: {
+                w.addstr(i + 4, 4, f"{intervals[i]:>3} taps: {
                          bpm(delta(times, intervals[i])):.2f}")
 
 
