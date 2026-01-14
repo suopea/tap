@@ -8,6 +8,7 @@ text_width = 30
 tap_width = 20
 minimum_height = 25
 stream_length = 8
+sticky_beat_smoothing = 3
 
 
 def main(w):
@@ -16,10 +17,10 @@ def main(w):
     text_w = curses.newwin(15, text_width, 0, 0)
     tap_w = curses.newwin(20, 20, 0, text_width)
 
-    global tap_count, tempo, last_tap_time
+    global tap_count, sticky_delta, last_tap_time
     tap_count = 1
+    sticky_delta = 1
     last_tap_time = time.time()
-    tempo = 1
     times = [0 for i in range(512)]
     intervals = [2, 4, 8, 12, 16, 32, 42, 69, 100, 128, 192, 256, 420, 512]
 
@@ -48,7 +49,7 @@ def main(w):
         if key != "KEY_RESIZE":
             with lock:
                 tap_count += 1
-                tempo = current_delta(times)
+                sticky_delta = get_sticky_delta(times)
                 last_tap_time = time.time()
     with lock:
         tap_count = 0
@@ -62,14 +63,12 @@ def ensure_large_enough_window(w, whole):
         w.noutrefresh()
         curses.doupdate()
         time.sleep(0.01)
-    return " "
 
 
-def current_delta(times):
+def get_sticky_delta(times):
     time_count = len([i for i in times if i])
-    ideal_smoothness = 3
-    if time_count > ideal_smoothness:
-        return delta(times, ideal_smoothness)
+    if time_count > sticky_beat_smoothing:
+        return delta(times, sticky_beat_smoothing)
     else:
         return delta(times, time_count)
 
@@ -87,7 +86,7 @@ def define_colors():
 
 
 def draw(w, lock, whole_window):
-    global tap_count, tempo
+    global tap_count, sticky_delta
     local_count = 0
     countdown_length = 24
     dancing_to_own_beat = False
@@ -129,7 +128,7 @@ def window_is_too_small(w):
 
 
 def unexpected_tap_arrived(lock):
-    global tempo, tap_count, last_tap_time
+    global sticky_delta, tap_count, last_tap_time
     interval = 0.0001
     with lock:
         tap_count_at_start = tap_count
@@ -139,12 +138,12 @@ def unexpected_tap_arrived(lock):
         with lock:
             if tap_count != tap_count_at_start:
                 return True
-            elif fmod(time.time() - last_tap_time, tempo) < interval * 5:
+            elif fmod(time.time() - last_tap_time, sticky_delta) < interval * 5:
                 return False
 
 
 def expected_tap_arrived(lock):
-    global tempo, tap_count, last_tap_time
+    global sticky_delta, tap_count, last_tap_time
     interval = 0.0001
     tap_arrived = False
     with lock:
@@ -152,7 +151,7 @@ def expected_tap_arrived(lock):
     while not tap_arrived:
         time.sleep(interval)
         with lock:
-            if time.time() > last_tap_time + tempo * 2:
+            if time.time() > last_tap_time + sticky_delta * 2:
                 return False
             elif tap_count != tap_count_at_start:
                 return True
