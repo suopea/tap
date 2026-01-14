@@ -2,6 +2,7 @@ import curses
 import time
 from threading import Thread, Lock
 from math import fmod
+from random import randrange
 
 
 """
@@ -83,10 +84,10 @@ def define_colors():
 def draw(w, lock):
     global tap_count, tempo
     local_count = 0
-    countdown_length = 20
+    countdown_length = 24
     dancing_to_own_beat = False
     stream = []
-    for i in range(6):
+    for i in range(8):
         stream.append(' . ')
     while tap_count < 3:
         pass
@@ -103,8 +104,9 @@ def draw(w, lock):
             if unexpected_tap_arrived(lock):
                 dancing_to_own_beat = False
         else:
+            local_count += 1
             if expected_tap_arrived(lock):
-                local_count += 1
+                pass
             else:
                 if local_count > countdown_length:
                     local_count = countdown_length
@@ -151,8 +153,11 @@ def draw_tap(w, count, dancing_to_own_beat, stream):
  #   ..........
 [_____]"""
     water = ["\\\\\\", "///"]
-    tap_rotate_end = 30
-    stream_start = 4
+    wtr = [" \\ ", " / "]
+    droplets = [" ' ", " o ", " O ", " . ", "  .", "  O", "  o", "  '"]
+    for i in range(9):
+        droplets.append("   ")
+    tap_rotate_end = 24
     x = 0
     y = 2
 
@@ -166,15 +171,31 @@ def draw_tap(w, count, dancing_to_own_beat, stream):
         w.addstr(1, x + 7, handle(count), red)
     else:
         w.addstr(1, x + 7, handle(tap_rotate_end), red)
-    if dancing_to_own_beat and count < stream_start:
-        add_to_stream(stream, "   ")
-    elif count > stream_start:
-        add_to_stream(stream, water[mod2(count)])
+    if dancing_to_own_beat:
+        if count > 20:
+            add_to_stream(stream, water[mod2(count)])
+        elif count > 17:
+            add_to_stream(stream, wtr[mod2(count)])
+        elif count > 2:
+            add_to_stream(stream, droplets[randrange(len(droplets))])
+        else:
+            if randrange(35) == 0:
+                add_to_stream(stream, "  .")
+            if randrange(80) == 0:
+                add_to_stream(stream, ".  ")
+            else:
+                add_to_stream(stream, "   ")
     else:
-        add_to_stream(stream, "   ")
-    for i in range(6):
+        if count > 10:
+            add_to_stream(stream, water[mod2(count)])
+        elif count > 9:
+            add_to_stream(stream, wtr[mod2(count)])
+        elif count > 3:
+            add_to_stream(stream, droplets[randrange(len(droplets))])
+        else:
+            add_to_stream(stream, "   ")
+    for i in range(len(stream)):
         w.addstr(y + i, x + 2, stream[i], blue)
-        # y += 1
 
 
 def add_to_stream(stream, line):
@@ -182,12 +203,6 @@ def add_to_stream(stream, line):
         stream[i] = stream[i - 1]
 
     stream[0] = line
-    # output = []
-    # output.append(line)
-    # output.append(line)
-    # for item in stream[:-1:]:
-    #     output.append(item)
-    # return output
 
 
 def handle(taps):
