@@ -4,20 +4,10 @@ from threading import Thread, Lock
 from math import fmod
 from random import randrange
 
-
-"""
-a keypress, after updating the data, starts the drawing thread
-the drawing thread accesses tap count but doesn't modify it
-after starting, only the drawing thread draws
-
-the main thread must be the one taking input
-main thread changes the tap count, which the draw thread listens to
-once draw thread
-
-"""
-
 text_width = 30
 tap_width = 20
+minimum_height = 25
+stream_length = 8
 
 
 def main(w):
@@ -29,21 +19,25 @@ def main(w):
     global tap_count, tempo, last_tap_time
     tap_count = 1
     last_tap_time = time.time()
-    tempo = 1000
+    tempo = 1
     times = [0 for i in range(512)]
     intervals = [2, 4, 8, 12, 16, 32, 42, 69, 100, 128, 192, 256, 420, 512]
 
-    w.clear()
+    ensure_large_enough_window(text_w, w)
+    text_w.clear()
     text_w.addstr(2, 2, "tap any key (or q to quit)")
     key = text_w.getkey()
+    while key == "KEY_RESIZE":
+        key = text_w.getkey()
 
-    draw_thread = Thread(target=draw, args=[tap_w, lock])
+    draw_thread = Thread(target=draw, args=[tap_w, lock, w])
     draw_thread.start()
     while key != "q" and key != "\x1b":
         key = text_w.getkey()
+        ensure_large_enough_window(text_w, w)
         text_w.clear()
-        times = update_times(times)
-
+        if key != "KEY_RESIZE":
+            times = update_times(times)
         text_w.addstr(2, 2, "average of the last...")
         for i in range(len(intervals)):
             if bpm(delta(times, intervals[i])):
@@ -51,13 +45,24 @@ def main(w):
                     bpm(delta(times, intervals[i])):.2f}")
         text_w.noutrefresh()
         curses.doupdate()
-        with lock:
-            tap_count += 1
-            tempo = current_delta(times)
-            last_tap_time = time.time()
+        if key != "KEY_RESIZE":
+            with lock:
+                tap_count += 1
+                tempo = current_delta(times)
+                last_tap_time = time.time()
     with lock:
         tap_count = 0
     draw_thread.join(3)
+
+
+def ensure_large_enough_window(w, whole):
+    while window_is_too_small(whole):
+        w.clear()
+        w.addstr(0, 0, "window too small")
+        w.noutrefresh()
+        curses.doupdate()
+        time.sleep(0.01)
+    return " "
 
 
 def current_delta(times):
@@ -81,17 +86,22 @@ def define_colors():
     red = curses.color_pair(127)
 
 
-def draw(w, lock):
+def draw(w, lock, whole_window):
     global tap_count, tempo
     local_count = 0
     countdown_length = 24
     dancing_to_own_beat = False
     stream = []
-    for i in range(8):
-        stream.append(' . ')
+    for i in range(stream_length):
+        stream.append('   ')
     while tap_count < 3:
         pass
     while True:
+        while window_is_too_small(whole_window):
+            w.clear()
+            w.noutrefresh()
+            curses.doupdate()
+            time.sleep(0.001)
         with lock:
             if tap_count == 0:
                 break
@@ -111,6 +121,11 @@ def draw(w, lock):
                 if local_count > countdown_length:
                     local_count = countdown_length
                 dancing_to_own_beat = True
+
+
+def window_is_too_small(w):
+    return ((w.getmaxyx()[0] < minimum_height)
+            or (w.getmaxyx()[1] < text_width + tap_width))
 
 
 def unexpected_tap_arrived(lock):
