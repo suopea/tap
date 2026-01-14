@@ -85,17 +85,16 @@ def draw(w, lock):
     local_count = 0
     countdown_length = 20
     dancing_to_own_beat = False
+    stream = []
+    for i in range(6):
+        stream.append(' . ')
     while tap_count < 3:
         pass
     while True:
         with lock:
             if tap_count == 0:
                 break
-        draw_tap(w, local_count)
-        if dancing_to_own_beat:
-            w.addstr(0, 0, f"own     {local_count}")
-        else:
-            w.addstr(0, 0, f"not own {local_count}")
+        draw_tap(w, local_count, dancing_to_own_beat, stream)
         w.noutrefresh()
         curses.doupdate()
         if dancing_to_own_beat:
@@ -142,7 +141,7 @@ def expected_tap_arrived(lock):
                 return True
 
 
-def draw_tap(w, count):
+def draw_tap(w, count, dancing_to_own_beat, stream):
     tap = """
 
          H
@@ -153,8 +152,7 @@ def draw_tap(w, count):
 [_____]"""
     water = ["\\\\\\", "///"]
     tap_rotate_end = 30
-    stream_start = 7
-    stream_length = 4
+    stream_start = 4
     x = 0
     y = 2
 
@@ -168,11 +166,28 @@ def draw_tap(w, count):
         w.addstr(1, x + 7, handle(count), red)
     else:
         w.addstr(1, x + 7, handle(tap_rotate_end), red)
-    for i in range(count - stream_start):
-        w.addstr(y, x + 2, water[mod2(count + mod2(y))], blue)
-        y += 1
-        if i > stream_length:
-            break
+    if dancing_to_own_beat and count < stream_start:
+        add_to_stream(stream, "   ")
+    elif count > stream_start:
+        add_to_stream(stream, water[mod2(count)])
+    else:
+        add_to_stream(stream, "   ")
+    for i in range(6):
+        w.addstr(y + i, x + 2, stream[i], blue)
+        # y += 1
+
+
+def add_to_stream(stream, line):
+    for i in range(len(stream) - 1, 0, -1):
+        stream[i] = stream[i - 1]
+
+    stream[0] = line
+    # output = []
+    # output.append(line)
+    # output.append(line)
+    # for item in stream[:-1:]:
+    #     output.append(item)
+    # return output
 
 
 def handle(taps):
