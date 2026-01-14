@@ -1,5 +1,6 @@
 import curses
 import time
+from threading import Thread, Lock
 from math import fmod
 
 
@@ -11,39 +12,75 @@ after starting, only the drawing thread draws
 the main thread must be the one taking input
 main thread changes the tap count, which the draw thread listens to
 once draw thread
+
 """
+
+text_width = 30
+tap_width = 20
 
 
 def main(w):
+    define_colors()
+    lock = Lock()
+    text_w = curses.newwin(15, text_width, 0, 0)
+    tap_w = curses.newwin(20, 20, 0, text_width)
+
+    global tap_count
+    tap_count = 1
+    times = [0 for i in range(512)]
+    intervals = [2, 4, 8, 12, 16, 32, 42, 69, 100, 128, 192, 256, 420, 512]
+
     w.clear()
+    text_w.addstr(2, 2, "tap any key (or q to quit)")
+    key = text_w.getkey()
+
+    draw_thread = Thread(target=draw, args=[tap_w, lock])
+    draw_thread.start()
+    while key != "q" and key != "\x1b":
+        key = text_w.getkey()
+        text_w.clear()
+        times = update_times(times)
+        text_w.addstr(2, 2, "average of the last...")
+        for i in range(len(intervals)):
+            if bpm(delta(times, intervals[i])):
+                text_w.addstr(i + 4, 4, f"{intervals[i]:>3} taps: {
+                    bpm(delta(times, intervals[i])):.2f}")
+        text_w.noutrefresh()
+        curses.doupdate()
+        with lock:
+            tap_count += 1
+    with lock:
+        tap_count = 0
+    draw_thread.join(3)
+
+
+def define_colors():
+    global blue, gray, red
     curses.curs_set(0)
     curses.use_default_colors()
     curses.init_pair(39, 39, -1)
     curses.init_pair(111, 111, -1)
     curses.init_pair(127, 127, -1)
     blue = curses.color_pair(39)
-    grey = curses.color_pair(111)
+    gray = curses.color_pair(111)
     red = curses.color_pair(127)
-    times = [0 for i in range(512)]
-    tap_count = 0
-    intervals = [2, 4, 8, 12, 16, 32, 42, 69, 100, 128, 192, 256, 420, 512]
-    key = 'key'
-    w.addstr(2, 2, "tap any key (or q to quit)")
-    while key not in "q" and key != "\x1b":
-        key = w.getkey()
-        # curses.flash()
-        w.clear()
-        times = update_times(times)
-        w.addstr(2, 2, "average of the last...")
-        for i in range(len(intervals)):
-            if bpm(delta(times, intervals[i])):
-                w.addstr(i + 4, 4, f"{intervals[i]:>3} taps: {
-                         bpm(delta(times, intervals[i])):.2f}")
-        tap_count += 1
-        draw_tap(w, tap_count, blue, red, grey)
 
 
-def draw_tap(w, tap_count, blue, red, gray):
+def draw(w, lock):
+    global tap_count
+    local_count = 0
+    while True:
+        with lock:
+            if tap_count == 0:
+                break
+        draw_tap(w, local_count)
+        w.noutrefresh()
+        curses.doupdate()
+        time.sleep(1)
+        local_count += 1
+
+
+def draw_tap(w, tap_count):
     tap = """
 
          H
@@ -56,7 +93,7 @@ def draw_tap(w, tap_count, blue, red, gray):
     tap_rotate_end = 30
     stream_start = 7
     stream_length = 4
-    x = 28
+    x = 0
     y = 2
 
     w.addstr(y, x, tap.split("\n")[y], red)
