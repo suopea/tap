@@ -61,7 +61,7 @@ def main(w):
 
 def current_delta(times):
     time_count = len([i for i in times if i])
-    ideal_smoothness = 8
+    ideal_smoothness = 3
     if time_count > ideal_smoothness:
         return delta(times, ideal_smoothness)
     else:
@@ -113,24 +113,23 @@ def draw(w, lock):
 
 
 def unexpected_tap_arrived(lock):
-    global tempo, tap_count
-    interval = 0.001
-    time_waited = 0
+    global tempo, tap_count, last_tap_time
+    interval = 0.0001
     with lock:
         tap_count_at_start = tap_count
+    time.sleep(interval * 3)
     while True:
         time.sleep(interval)
-        time_waited += interval
         with lock:
             if tap_count != tap_count_at_start:
                 return True
-            elif time_waited > tempo:
+            elif fmod(time.time() - last_tap_time, tempo) < interval * 5:
                 return False
 
 
 def expected_tap_arrived(lock):
     global tempo, tap_count, last_tap_time
-    interval = 0.001
+    interval = 0.0001
     tap_arrived = False
     with lock:
         tap_count_at_start = tap_count
