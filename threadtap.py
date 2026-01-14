@@ -25,8 +25,10 @@ def main(w):
     text_w = curses.newwin(15, text_width, 0, 0)
     tap_w = curses.newwin(20, 20, 0, text_width)
 
-    global tap_count
+    global tap_count, tempo, last_tap_time
     tap_count = 1
+    last_tap_time = time.time()
+    tempo = 1000
     times = [0 for i in range(512)]
     intervals = [2, 4, 8, 12, 16, 32, 42, 69, 100, 128, 192, 256, 420, 512]
 
@@ -40,6 +42,7 @@ def main(w):
         key = text_w.getkey()
         text_w.clear()
         times = update_times(times)
+
         text_w.addstr(2, 2, "average of the last...")
         for i in range(len(intervals)):
             if bpm(delta(times, intervals[i])):
@@ -49,9 +52,20 @@ def main(w):
         curses.doupdate()
         with lock:
             tap_count += 1
+            tempo = current_delta(times)
+            last_tap_time = time.time()
     with lock:
         tap_count = 0
     draw_thread.join(3)
+
+
+def current_delta(times):
+    time_count = len([i for i in times if i])
+    ideal_smoothness = 8
+    if time_count > ideal_smoothness:
+        return delta(times, ideal_smoothness)
+    else:
+        return delta(times, time_count)
 
 
 def define_colors():
@@ -67,20 +81,69 @@ def define_colors():
 
 
 def draw(w, lock):
-    global tap_count
+    global tap_count, tempo
     local_count = 0
+    countdown_length = 20
+    dancing_to_own_beat = False
+    while tap_count < 3:
+        pass
     while True:
         with lock:
             if tap_count == 0:
                 break
         draw_tap(w, local_count)
+        if dancing_to_own_beat:
+            w.addstr(0, 0, f"own     {local_count}")
+        else:
+            w.addstr(0, 0, f"not own {local_count}")
         w.noutrefresh()
         curses.doupdate()
-        time.sleep(1)
-        local_count += 1
+        if dancing_to_own_beat:
+            if local_count > 0:
+                local_count += -1
+            if unexpected_tap_arrived(lock):
+                dancing_to_own_beat = False
+        else:
+            if expected_tap_arrived(lock):
+                local_count += 1
+            else:
+                if local_count > countdown_length:
+                    local_count = countdown_length
+                dancing_to_own_beat = True
 
 
-def draw_tap(w, tap_count):
+def unexpected_tap_arrived(lock):
+    global tempo, tap_count
+    interval = 0.001
+    time_waited = 0
+    with lock:
+        tap_count_at_start = tap_count
+    while True:
+        time.sleep(interval)
+        time_waited += interval
+        with lock:
+            if tap_count != tap_count_at_start:
+                return True
+            elif time_waited > tempo:
+                return False
+
+
+def expected_tap_arrived(lock):
+    global tempo, tap_count, last_tap_time
+    interval = 0.001
+    tap_arrived = False
+    with lock:
+        tap_count_at_start = tap_count
+    while not tap_arrived:
+        time.sleep(interval)
+        with lock:
+            if time.time() > last_tap_time + tempo * 2:
+                return False
+            elif tap_count != tap_count_at_start:
+                return True
+
+
+def draw_tap(w, count):
     tap = """
 
          H
@@ -96,17 +159,18 @@ def draw_tap(w, tap_count):
     x = 0
     y = 2
 
+    w.clear()
     w.addstr(y, x, tap.split("\n")[y], red)
     y += 1
     while y < len(tap.split("\n")):
         w.addstr(y, x, tap.split("\n")[y], gray)
         y += 1
-    if tap_count < tap_rotate_end:
-        w.addstr(1, x + 7, handle(tap_count), red)
+    if count < tap_rotate_end:
+        w.addstr(1, x + 7, handle(count), red)
     else:
         w.addstr(1, x + 7, handle(tap_rotate_end), red)
-    for i in range(tap_count - stream_start):
-        w.addstr(y, x + 2, water[mod2(tap_count + mod2(y))], blue)
+    for i in range(count - stream_start):
+        w.addstr(y, x + 2, water[mod2(count + mod2(y))], blue)
         y += 1
         if i > stream_length:
             break
