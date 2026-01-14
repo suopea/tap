@@ -1,5 +1,5 @@
 import curses
-import time
+from time import time, sleep
 from threading import Thread, Lock
 from math import fmod
 from random import randrange
@@ -10,6 +10,7 @@ minimum_height = 25
 stream_length = 8
 sticky_beat_smoothing = 3
 tap_check_speed_s = 0.0001
+reset_after_inactive_s = 1
 
 droplets_small_start = 3
 droplet_start = 11
@@ -18,10 +19,10 @@ stream_big_start = 15
 
 stream_big_stop = 16
 stream_small_stop = 14
-droplets_stop = 5
+droplets_stop = 9
 droplets_small_stop = 1
 
-droplet_rarity = 10
+droplet_rarity = 12
 constant_drop_rarity_right = 35
 constant_drop_rarity_left = 80
 
@@ -35,7 +36,7 @@ def main(w):
     global tap_count, sticky_delta, last_tap_time
     tap_count = 1
     sticky_delta = 1
-    last_tap_time = time.time()
+    last_tap_time = time()
     times = [0 for i in range(512)]
     intervals = [2, 4, 8, 12, 16, 32, 42, 69, 100, 128, 192, 256, 420, 512]
 
@@ -54,7 +55,11 @@ def main(w):
         text_w.clear()
         if key != "KEY_RESIZE":
             times = update_times(times)
-        text_w.addstr(2, 2, "average of the last...")
+        with lock:
+            if time() - last_tap_time > reset_after_inactive_s:
+                times = [0 for i in range(512)]
+                tap_count = 1
+        text_w.addstr(2, 2, "average BPM of the last...")
         for i in range(len(intervals)):
             if bpm(delta(times, intervals[i])):
                 text_w.addstr(i + 4, 4, f"{intervals[i]:>3} taps: {
@@ -65,7 +70,7 @@ def main(w):
             with lock:
                 tap_count += 1
                 sticky_delta = get_sticky_delta(times)
-                last_tap_time = time.time()
+                last_tap_time = time()
     with lock:
         tap_count = 0
     draw_thread.join(3)
@@ -77,13 +82,15 @@ def ensure_large_enough_window(w, whole):
         w.addstr(0, 0, "window too small")
         w.noutrefresh()
         curses.doupdate()
-        time.sleep(0.01)
+        sleep(0.01)
 
 
 def get_sticky_delta(times):
     time_count = len([i for i in times if i])
     if time_count > sticky_beat_smoothing:
         return delta(times, sticky_beat_smoothing)
+    elif time_count < 2:
+        return 1
     else:
         return delta(times, time_count)
 
@@ -115,7 +122,7 @@ def draw(w, lock, whole_window):
             w.clear()
             w.noutrefresh()
             curses.doupdate()
-            time.sleep(0.001)
+            sleep(0.001)
         with lock:
             if tap_count == 0:
                 break
@@ -146,13 +153,13 @@ def unexpected_tap_arrived(lock):
     global sticky_delta, tap_count, last_tap_time
     with lock:
         tap_count_at_start = tap_count
-    time.sleep(tap_check_speed_s * 3)
+    sleep(tap_check_speed_s * 3)
     while True:
-        time.sleep(tap_check_speed_s)
+        sleep(tap_check_speed_s)
         with lock:
             if tap_count != tap_count_at_start:
                 return True
-            elif fmod(time.time() - last_tap_time, sticky_delta) < tap_check_speed_s * 5:
+            if fmod(time() - last_tap_time, sticky_delta) < tap_check_speed_s * 5:
                 return False
 
 
@@ -162,9 +169,9 @@ def expected_tap_arrived(lock):
     with lock:
         tap_count_at_start = tap_count
     while not tap_arrived:
-        time.sleep(tap_check_speed_s)
+        sleep(tap_check_speed_s)
         with lock:
-            if time.time() > last_tap_time + sticky_delta * 2:
+            if time() > last_tap_time + sticky_delta * 2:
                 return False
             elif tap_count != tap_count_at_start:
                 return True
@@ -186,19 +193,19 @@ def draw_tap(w, count, dancing_to_own_beat, stream):
     w.clear()
     w.addstr(y, x, tap.split("\n")[y], red)
     y += 1
-    while y < len(tap.split("\n")):
-        w.addstr(y, x, tap.split("\n")[y], gray)
-        y += 1
     if count < tap_rotate_end:
         w.addstr(1, x + 7, handle(count), red)
     else:
         w.addstr(1, x + 7, handle(tap_rotate_end), red)
+    while y < len(tap.split("\n")):
+        w.addstr(y, x, tap.split("\n")[y], gray)
+        y += 1
     define_water(count, stream, dancing_to_own_beat)
     for i in range(len(stream)):
         w.addstr(y + i, x + 2, stream[i], blue)
 
 
-def define_water(count, stream, dancing_to_own_beat):
+def define_water(count, stream, tap_is_closing):
     water = ["\\\\\\", "///"]
     wtr = [" \\ ", " / "]
     droplets = [" ' ", " o ", " O ", " . ", "  .", "  O", "  o", "  '"]
@@ -206,7 +213,8 @@ def define_water(count, stream, dancing_to_own_beat):
     for i in range(droplet_rarity):
         droplets.append("   ")
         droplets_small.append("   ")
-    if dancing_to_own_beat:
+
+    if tap_is_closing:
         if count > stream_big_stop:
             add_to_stream(stream, water[mod2(count)])
         elif count > stream_small_stop:
@@ -270,7 +278,7 @@ def delta(times, taps):
 def update_times(times):
     for i in range(len(times) - 1, 0, -1):
         times[i] = times[i - 1]
-    times[0] = time.time()
+    times[0] = time()
     return times
 
 
