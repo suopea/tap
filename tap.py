@@ -9,6 +9,21 @@ tap_width = 20
 minimum_height = 25
 stream_length = 8
 sticky_beat_smoothing = 3
+tap_check_speed_s = 0.0001
+
+droplets_small_start = 3
+droplet_start = 11
+stream_small_start = 14
+stream_big_start = 15
+
+stream_big_stop = 16
+stream_small_stop = 14
+droplets_stop = 5
+droplets_small_stop = 1
+
+droplet_rarity = 10
+constant_drop_rarity_right = 35
+constant_drop_rarity_left = 80
 
 
 def main(w):
@@ -129,27 +144,25 @@ def window_is_too_small(w):
 
 def unexpected_tap_arrived(lock):
     global sticky_delta, tap_count, last_tap_time
-    interval = 0.0001
     with lock:
         tap_count_at_start = tap_count
-    time.sleep(interval * 3)
+    time.sleep(tap_check_speed_s * 3)
     while True:
-        time.sleep(interval)
+        time.sleep(tap_check_speed_s)
         with lock:
             if tap_count != tap_count_at_start:
                 return True
-            elif fmod(time.time() - last_tap_time, sticky_delta) < interval * 5:
+            elif fmod(time.time() - last_tap_time, sticky_delta) < tap_check_speed_s * 5:
                 return False
 
 
 def expected_tap_arrived(lock):
     global sticky_delta, tap_count, last_tap_time
-    interval = 0.0001
     tap_arrived = False
     with lock:
         tap_count_at_start = tap_count
     while not tap_arrived:
-        time.sleep(interval)
+        time.sleep(tap_check_speed_s)
         with lock:
             if time.time() > last_tap_time + sticky_delta * 2:
                 return False
@@ -166,11 +179,6 @@ def draw_tap(w, count, dancing_to_own_beat, stream):
  #
  #   ..........
 [_____]"""
-    water = ["\\\\\\", "///"]
-    wtr = [" \\ ", " / "]
-    droplets = [" ' ", " o ", " O ", " . ", "  .", "  O", "  o", "  '"]
-    for i in range(9):
-        droplets.append("   ")
     tap_rotate_end = 24
     x = 0
     y = 2
@@ -185,31 +193,48 @@ def draw_tap(w, count, dancing_to_own_beat, stream):
         w.addstr(1, x + 7, handle(count), red)
     else:
         w.addstr(1, x + 7, handle(tap_rotate_end), red)
+    define_water(count, stream, dancing_to_own_beat)
+    for i in range(len(stream)):
+        w.addstr(y + i, x + 2, stream[i], blue)
+
+
+def define_water(count, stream, dancing_to_own_beat):
+    water = ["\\\\\\", "///"]
+    wtr = [" \\ ", " / "]
+    droplets = [" ' ", " o ", " O ", " . ", "  .", "  O", "  o", "  '"]
+    droplets_small = [" ' ", " . ", "  .", "  o", "  '", ", '"]
+    for i in range(droplet_rarity):
+        droplets.append("   ")
+        droplets_small.append("   ")
     if dancing_to_own_beat:
-        if count > 20:
+        if count > stream_big_stop:
             add_to_stream(stream, water[mod2(count)])
-        elif count > 17:
+        elif count > stream_small_stop:
             add_to_stream(stream, wtr[mod2(count)])
-        elif count > 2:
+        elif count > droplets_stop:
             add_to_stream(stream, droplets[randrange(len(droplets))])
+        elif count > droplets_small_stop:
+            add_to_stream(
+                stream, droplets_small[randrange(len(droplets_small))])
         else:
-            if randrange(35) == 0:
+            if randrange(constant_drop_rarity_right) == 0:
                 add_to_stream(stream, "  .")
-            if randrange(80) == 0:
+            if randrange(constant_drop_rarity_left) == 0:
                 add_to_stream(stream, ".  ")
             else:
                 add_to_stream(stream, "   ")
     else:
-        if count > 10:
+        if count > stream_big_start:
             add_to_stream(stream, water[mod2(count)])
-        elif count > 9:
+        elif count > stream_small_start:
             add_to_stream(stream, wtr[mod2(count)])
-        elif count > 3:
+        elif count > droplet_start:
             add_to_stream(stream, droplets[randrange(len(droplets))])
+        elif count > droplets_small_start:
+            add_to_stream(
+                stream, droplets_small[randrange(len(droplets_small))])
         else:
             add_to_stream(stream, "   ")
-    for i in range(len(stream)):
-        w.addstr(y + i, x + 2, stream[i], blue)
 
 
 def add_to_stream(stream, line):
